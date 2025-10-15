@@ -963,6 +963,8 @@ function CreateGroupModal({ onClose, userId }: any) {
     setError('');
 
     try {
+      console.log('=== Starting Group Creation ===');
+      
       if (!formData.name.trim()) {
         throw new Error('Group name is required');
       }
@@ -971,50 +973,66 @@ function CreateGroupModal({ onClose, userId }: any) {
         throw new Error('User not authenticated');
       }
 
-      console.log('Creating group with data:', { ...formData, created_by: userId });
+      const groupData = {
+        name: formData.name.trim(),
+        emoji: formData.emoji,
+        description: formData.description.trim() || null,
+        color: formData.color,
+        created_by: userId
+      };
+
+      console.log('1. Group data to insert:', groupData);
 
       // Create group
       const { data: group, error: groupError } = await supabase
         .from('groups')
-        .insert({
-          name: formData.name.trim(),
-          emoji: formData.emoji,
-          description: formData.description.trim() || null,
-          color: formData.color,
-          created_by: userId
-        })
+        .insert(groupData)
         .select()
         .single();
+
+      console.log('2. Group creation response:', { group, error: groupError });
 
       if (groupError) {
         console.error('Group creation error:', groupError);
         throw new Error(groupError.message || 'Failed to create group');
       }
 
-      console.log('Group created:', group);
+      if (!group) {
+        throw new Error('Group created but no data returned');
+      }
+
+      console.log('3. Group created successfully:', group);
 
       // Add creator as admin member
+      const memberData = {
+        group_id: group.id,
+        user_id: userId,
+        role: 'admin'
+      };
+
+      console.log('4. Adding member with data:', memberData);
+
       const { error: memberError } = await supabase
         .from('group_members')
-        .insert({
-          group_id: group.id,
-          user_id: userId,
-          role: 'admin'
-        });
+        .insert(memberData);
+
+      console.log('5. Member addition response:', { error: memberError });
 
       if (memberError) {
         console.error('Member addition error:', memberError);
-        // If member addition fails, try to delete the group
+        // Try to delete the group if member addition fails
         await supabase.from('groups').delete().eq('id', group.id);
-        throw new Error('Failed to add you as group admin');
+        throw new Error(`Failed to add you as group admin: ${memberError.message}`);
       }
 
-      console.log('Group member added successfully');
+      console.log('6. Group creation completed successfully!');
       
-      // Close modal and refresh data
+      // Success - close modal and refresh
+      alert('Group created successfully!');
       onClose();
     } catch (err: any) {
-      console.error('Error in group creation:', err);
+      console.error('=== Group Creation Failed ===');
+      console.error('Error:', err);
       setError(err.message || 'Failed to create group');
     } finally {
       setLoading(false);
