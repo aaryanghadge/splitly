@@ -34,18 +34,41 @@ export default function ProfilePage() {
 
       setUser(user);
 
-      const { data: profileData } = await supabase
+      const { data: profileData, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      setProfile(profileData);
-      setFormData({
-        name: profileData?.name || '',
-        bio: profileData?.bio || '',
-        phone: profileData?.phone || ''
-      });
+      // If profile doesn't exist, create one with data from auth metadata
+      if (error || !profileData) {
+        const newProfile = {
+          id: user.id,
+          email: user.email,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          created_at: new Date().toISOString()
+        };
+
+        const { data: createdProfile } = await supabase
+          .from('profiles')
+          .insert(newProfile)
+          .select()
+          .single();
+
+        setProfile(createdProfile || newProfile);
+        setFormData({
+          name: createdProfile?.name || newProfile.name,
+          bio: createdProfile?.bio || '',
+          phone: createdProfile?.phone || ''
+        });
+      } else {
+        setProfile(profileData);
+        setFormData({
+          name: profileData?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          bio: profileData?.bio || '',
+          phone: profileData?.phone || ''
+        });
+      }
     } catch (error) {
       console.error('Error loading profile:', error);
     } finally {

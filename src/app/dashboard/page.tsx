@@ -7,7 +7,6 @@ import {
   LayoutDashboard, 
   Users, 
   Plus, 
-  TrendingUp, 
   PieChart,
   LogOut,
   Search,
@@ -18,7 +17,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Filter,
-  Shield
+  Shield,
+  Trash2
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -42,146 +42,230 @@ export default function Dashboard() {
   useEffect(() => {
     loadData();
 
-    // Set timeout to prevent infinite loading
     const timeout = setTimeout(() => {
       if (loading) {
         console.warn('Loading took too long, forcing UI render');
         setLoading(false);
       }
-    }, 5000); // 5 second timeout
+    }, 5000);
 
     return () => clearTimeout(timeout);
   }, []);
 
   const loadData = async () => {
     try {
-      // Get user
+      console.log('=== Loading Dashboard Data ===');
+      
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user) {
+        console.error('Auth error:', userError);
         router.push('/login');
         return;
       }
 
+      console.log('User authenticated:', user.id);
       setUser(user);
 
-      // Load all data in parallel for faster loading
-      const [profileData, groupsData, expensesData, balancesData, notificationsData] = await Promise.all([
-        // Get profile
-        supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('No active session - redirecting to login');
+        router.push('/login');
+        return;
+      }
+
+      // Get profile
+      let profileData = null;
+      const { data: existingProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.warn('Profile not found, creating one...');
+        const { data: newProfile } = await supabase
           .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-          .then(res => res.data),
+          .insert({
+            id: user.id,
+            email: user.email,
+            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        profileData = newProfile;
+      } else {
+        profileData = existingProfile;
+      }
 
-        // Get groups with counts (optimized)
-        supabase
-          .from('groups')
-          .select(`
-            id,
-            name,
-            emoji,
-            description,
-            color,
-            created_by,
-            group_members!inner(role),
-            expenses(amount)
-          `)
-          .eq('group_members.user_id', user.id)
-          .limit(10)
-          .then(res => res.data),
+      setProfile(profileData);
+      setLoading(false);
 
-        // Get recent expenses
-        supabase
+      // Get groups with member counts
+      const { data: groupsData } = await supabase
+        .from('groups')
+        .select(`
+          id,
+          name,
+          emoji,
+          description,
+          color,
+          created_by,
+          group_members!inner(role, user_id),
+          expenses(amount)
+        `)
+        .eq('group_members.user_id', user.id)
+        .limit(10);
+
+      const transformedGroups = await Promise.all(
+        (groupsData || []).map(async (group) => {
+          const { count } = await supabase
+            .from('group_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('group_id', group.id);
+
+          return {
+            ...group,
+            total: group.expenses?.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0) || 0,
+            expenseCount: group.expenses?.length || 0,
+            members: count || 1
+          };
+        })
+      );
+      setGroups(transformedGroups);
+
+      // Get recent expenses
+      const { data: expensesData } = await supabase
+        .from('expenses')
+        .select(`
+          id,
+          title,
+          amount,
+          category,
+          date,
+          paid_by_id,
+          groups(name),
+          paid_by:profiles!expenses_paid_by_id_fkey(name)
+        `)
+        .order('date', { ascending: false })
+        .limit(5);
+
+      setExpenses(expensesData || []);
+
+      // ===== FIXED BALANCE CALCULATION =====
+      // Get all groups user is part of
+      const { data: userGroups } = await supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', user.id);
+
+      const groupIds = (userGroups || []).map(g => g.group_id);
+
+      if (groupIds.length === 0) {
+        console.log('No groups found for user');
+        setBalances([]);
+      } else {
+        // Get all expenses in these groups with their splits
+        const { data: allExpenses } = await supabase
           .from('expenses')
           .select(`
             id,
-            title,
             amount,
-            category,
-            date,
-            groups(name),
-            paid_by:profiles!expenses_paid_by_id_fkey(name)
+            paid_by_id,
+            group_id,
+            expense_splits(user_id, amount)
           `)
-          .order('date', { ascending: false })
-          .limit(5)
-          .then(res => res.data),
+          .in('group_id', groupIds);
 
-        // Get balances
-        supabase
-          .from('balances')
-          .select(`
-            id,
-            amount,
-            from_user_id,
-            to_user_id,
-            toUser:profiles!balances_to_user_id_fkey(id, name),
-            fromUser:profiles!balances_from_user_id_fkey(id, name)
-          `)
-          .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
-          .limit(3)
-          .then(res => res.data),
+        console.log('All expenses with splits:', allExpenses);
 
-        // Get notifications
-        supabase
-          .from('reminders')
-          .select('id, title, message, reminder_date, created_at')
-          .eq('user_id', user.id)
-          .eq('is_read', false)
-          .order('reminder_date', { ascending: true })
-          .limit(5)
-          .then(res => {
-            // If table doesn't exist, return empty array
-            if (res.error?.code === '42P01') {
-              console.warn('Reminders table not found - skipping');
-              return [];
+        // Calculate what user owes and is owed
+        const balanceMap: { [key: string]: { name: string; amount: number } } = {};
+
+        (allExpenses || []).forEach(expense => {
+          const totalAmount = Number(expense.amount);
+          const splits = expense.expense_splits || [];
+          
+          // Find current user's split
+          const userSplit = splits.find((s: any) => s.user_id === user.id);
+          const userOwes = userSplit ? Number(userSplit.amount) : 0;
+
+          // If current user paid
+          if (expense.paid_by_id === user.id) {
+            // User gets back what others owe
+            splits.forEach((split: any) => {
+              if (split.user_id !== user.id) {
+                const otherUserId = split.user_id;
+                if (!balanceMap[otherUserId]) {
+                  balanceMap[otherUserId] = { name: '', amount: 0 };
+                }
+                // This person owes the user
+                balanceMap[otherUserId].amount += Number(split.amount);
+              }
+            });
+          } else {
+            // Someone else paid, user owes them
+            const payerId = expense.paid_by_id;
+            if (userOwes > 0) {
+              if (!balanceMap[payerId]) {
+                balanceMap[payerId] = { name: '', amount: 0 };
+              }
+              // User owes this person
+              balanceMap[payerId].amount -= userOwes;
             }
-            return res.data;
-          })
-      ]);
+          }
+        });
 
-      // Set profile immediately
-      setProfile(profileData);
-      setLoading(false); // Stop loading spinner early
+        console.log('Balance map before names:', balanceMap);
 
-      // Transform and set groups
-      const transformedGroups = (groupsData || []).map(group => ({
-        ...group,
-        total: group.expenses?.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0) || 0,
-        expenseCount: group.expenses?.length || 0,
-        members: 1
-      }));
-      setGroups(transformedGroups);
+        // Get names for all users in balance map
+        const userIds = Object.keys(balanceMap);
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, name')
+            .in('id', userIds);
 
-      // Set expenses
-      setExpenses(expensesData || []);
+          (profiles || []).forEach(profile => {
+            if (balanceMap[profile.id]) {
+              balanceMap[profile.id].name = profile.name || 'User';
+            }
+          });
+        }
 
-      // Transform and set balances
-      const transformedBalances = (balancesData || []).map(balance => {
-        const isFromUser = balance.from_user_id === user.id;
-        // Handle both object and array cases
-        const toUserData = Array.isArray(balance.toUser) ? balance.toUser[0] : balance.toUser;
-        const fromUserData = Array.isArray(balance.fromUser) ? balance.fromUser[0] : balance.fromUser;
-        const toUserName = toUserData?.name || 'User';
-        const fromUserName = fromUserData?.name || 'User';
-        return {
-          ...balance,
-          type: isFromUser ? 'you-owe' : 'owes-you',
-          amount: Number(balance.amount || 0),
-          name: isFromUser ? toUserName : fromUserName,
-          avatar: (isFromUser ? toUserName : fromUserName)[0]?.toUpperCase() || 'U'
-        };
-      });
-      setBalances(transformedBalances);
+        // Convert to array and separate into owes-you and you-owe
+        const balancesArray = Object.entries(balanceMap)
+          .filter(([_, data]) => Math.abs(data.amount) > 0.01) // Filter out near-zero balances
+          .map(([userId, data]) => ({
+            user_id: userId,
+            name: data.name,
+            amount: Math.abs(data.amount),
+            type: data.amount > 0 ? 'owes-you' : 'you-owe',
+            avatar: data.name[0]?.toUpperCase() || 'U'
+          }));
 
-      // Set notifications
+        console.log('Final balances:', balancesArray);
+        setBalances(balancesArray);
+      }
+
+      // Get notifications
+      const { data: notificationsData } = await supabase
+        .from('reminders')
+        .select('id, title, message, reminder_date, created_at')
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+        .order('reminder_date', { ascending: true })
+        .limit(5);
+
       setNotifications(notificationsData || []);
+
+      console.log('=== Dashboard Data Loaded ===');
 
     } catch (error: any) {
       console.error('Error loading data:', error);
       setError(error.message || 'Failed to load dashboard data');
-      setLoading(false); // Always stop loading on error
+      setLoading(false);
     }
   };
 
@@ -190,19 +274,50 @@ export default function Dashboard() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
-      // Clear any local state
       setUser(null);
       setProfile(null);
       setGroups([]);
       setExpenses([]);
       setBalances([]);
       
-      // Redirect to home page
       router.push('/');
       router.refresh();
     } catch (error) {
       console.error('Error signing out:', error);
       alert('Failed to sign out. Please try again.');
+    }
+  };
+
+  // NEW: simple UPI "Pay Me" flow used by Settle Up and group Pay actions
+  const handleSettleUp = () => {
+    // Prompt user for amount, UPI ID and payee name. Keep minimal for launch.
+    const amountInput = prompt('Enter amount to request (INR)');
+    if (!amountInput) return;
+    const amount = parseFloat(amountInput);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Invalid amount');
+      return;
+    }
+
+    const upi = prompt('Enter UPI ID to request payment to (pa)');
+    if (!upi) {
+      alert('UPI ID required');
+      return;
+    }
+
+    const pn = encodeURIComponent(prompt('Payee name (pn)', 'Splitly') || 'Splitly');
+    const pa = encodeURIComponent(upi);
+    const am = encodeURIComponent(amount.toFixed(2));
+
+    const upiUrl = `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR`;
+    const gpayFallback = `https://pay.google.com/upi/pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR`;
+
+    // Try opening UPI intent; fallback to web URL
+    try {
+      window.open(upiUrl, '_blank');
+      setTimeout(() => window.open(gpayFallback, '_blank'), 400);
+    } catch (err) {
+      window.open(gpayFallback, '_blank');
     }
   };
 
@@ -255,9 +370,18 @@ export default function Dashboard() {
     );
   }
 
-  const totalOwed = balances.filter(b => b.type === 'owes-you').reduce((sum, b) => sum + b.amount, 0);
-  const totalOwe = balances.filter(b => b.type === 'you-owe').reduce((sum, b) => sum + b.amount, 0);
+  // Calculate totals from balances
+  const totalOwed = balances
+    .filter(b => b.type === 'owes-you')
+    .reduce((sum, b) => sum + b.amount, 0);
+  
+  const totalOwe = balances
+    .filter(b => b.type === 'you-owe')
+    .reduce((sum, b) => sum + b.amount, 0);
+  
   const totalSpent = groups.reduce((sum, g) => sum + g.total, 0);
+
+  console.log('Display totals:', { totalOwed, totalOwe, totalSpent });
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -299,24 +423,18 @@ export default function Dashboard() {
               onClick={() => setActiveTab('groups')}
             />
             <NavItem 
-              icon={<TrendingUp className="w-5 h-5" />}
-              label="Balances"
-              active={activeTab === 'balances'}
-              onClick={() => {
-                setActiveTab('balances');
-                router.push('/balances');
-              }}
-            />
-            <NavItem 
               icon={<PieChart className="w-5 h-5" />}
               label="Analytics"
               active={activeTab === 'analytics'}
-              onClick={() => setActiveTab('analytics')}
+              onClick={() => {
+                setActiveTab('analytics');
+                router.push('/analytics');
+              }}
             />
 
             <button 
               onClick={() => setShowAddExpense(true)}
-              className="w-full mt-6 px-4 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105 flex items-center justify-center gap-2"
+              className="w-full mt-6 px-4 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center justify-center gap-2"
             >
               <Plus className="w-5 h-5" />
               Add Expense
@@ -460,7 +578,12 @@ export default function Dashboard() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {groups.map(group => (
-                    <GroupCard key={group.id} group={group} router={router} />
+                    <GroupCard 
+                      key={group.id} 
+                      group={group} 
+                      router={router}
+                      onDelete={() => setGroups(prev => prev.filter(g => g.id !== group.id))}
+                    />
                   ))}
                 </div>
               )}
@@ -471,7 +594,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white">Balances</h2>
                 <button 
-                  onClick={() => router.push('/balances')}
+                  onClick={handleSettleUp}
                   className="text-sm text-purple-400 hover:text-purple-300 transition"
                 >
                   Settle Up
@@ -626,7 +749,7 @@ function StatCard({ icon, label, value, change, color, bgColor }: any) {
   );
 }
 
-function GroupCard({ group, router }: any) {
+function GroupCard({ group, router, onDelete }: any) {
   return (
     <div 
       className="relative group cursor-pointer"
@@ -638,7 +761,18 @@ function GroupCard({ group, router }: any) {
           <div className={`w-14 h-14 bg-gradient-to-br ${group.color || 'from-purple-500 to-pink-500'} rounded-2xl flex items-center justify-center text-3xl shadow-lg`}>
             {group.emoji || '💰'}
           </div>
-          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white transition" />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-all"
+            >
+              <Trash2 className="w-4 h-4 text-gray-400" />
+            </button>
+            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white transition" />
+          </div>
         </div>
         <h3 className="font-bold text-white text-lg mb-2">{group.name}</h3>
         <p className="text-2xl font-black bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-4">
@@ -677,7 +811,6 @@ function BalanceItem({ balance }: any) {
   );
 }
 
-// Notifications Dropdown
 function NotificationsDropdown({ notifications, onClose, onAddReminder }: any) {
   return (
     <div className="absolute right-0 top-12 w-80 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 shadow-2xl z-50">
@@ -720,7 +853,6 @@ function NotificationsDropdown({ notifications, onClose, onAddReminder }: any) {
   );
 }
 
-// Settings Dropdown
 function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
   const router = useRouter();
 
@@ -736,7 +868,6 @@ function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
         </button>
       </div>
 
-      {/* User Profile Section */}
       <div className="mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xl">
@@ -758,7 +889,6 @@ function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
         </button>
       </div>
 
-      {/* Settings Options */}
       <div className="space-y-2 mb-4">
         <button
           onClick={() => {
@@ -794,7 +924,6 @@ function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
         </button>
       </div>
 
-      {/* Logout Button */}
       <button
         onClick={onSignOut}
         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all border border-red-500/20"
@@ -806,7 +935,6 @@ function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
   );
 }
 
-// Modals
 function AddExpenseModal({ onClose, groups, userId }: any) {
   const [formData, setFormData] = useState({
     title: '',
@@ -814,9 +942,93 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
     category: '🍕',
     groupId: groups[0]?.id || '',
   });
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [splitType, setSplitType] = useState<'equal' | 'custom'>('equal');
+  const [customSplits, setCustomSplits] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    if (formData.groupId) {
+      loadGroupMembers();
+    }
+  }, [formData.groupId]);
+
+  const loadGroupMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('group_members')
+        .select(`
+          user_id,
+          profiles(id, name, email)
+        `)
+        .eq('group_id', formData.groupId);
+
+      if (error) throw error;
+
+      const members = (data || []).map(m => ({
+        id: m.user_id,
+        name: (m.profiles as any)?.name || 'User',
+        email: (m.profiles as any)?.email || ''
+      }));
+
+      setGroupMembers(members);
+      setSelectedMembers(members.map(m => m.id));
+      
+      const initialSplits: { [key: string]: string } = {};
+      members.forEach(m => {
+        initialSplits[m.id] = '';
+      });
+      setCustomSplits(initialSplits);
+
+    } catch (err: any) {
+      console.error('Error loading group members:', err);
+      setError('Failed to load group members');
+    }
+  };
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMembers(prev => 
+      prev.includes(memberId) 
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
+  };
+
+  const calculateSplits = () => {
+    const amount = parseFloat(formData.amount);
+    if (isNaN(amount) || selectedMembers.length === 0) return {};
+
+    if (splitType === 'equal') {
+      const splitAmount = amount / selectedMembers.length;
+      const splits: { [key: string]: number } = {};
+      selectedMembers.forEach(memberId => {
+        splits[memberId] = splitAmount;
+      });
+      return splits;
+    } else {
+      const splits: { [key: string]: number } = {};
+      selectedMembers.forEach(memberId => {
+        const customAmount = parseFloat(customSplits[memberId] || '0');
+        splits[memberId] = customAmount;
+      });
+      return splits;
+    }
+  };
+
+  const validateSplits = () => {
+    const amount = parseFloat(formData.amount);
+    const splits = calculateSplits();
+    const total = Object.values(splits).reduce((sum, val) => sum + val, 0);
+
+    if (splitType === 'custom' && Math.abs(total - amount) > 0.01) {
+      throw new Error(`Split amounts (₹${total.toFixed(2)}) must equal total amount (₹${amount.toFixed(2)})`);
+    }
+
+    return splits;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -828,20 +1040,53 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
         throw new Error('Please fill in all required fields');
       }
 
-      const { error: insertError } = await supabase
+      if (selectedMembers.length === 0) {
+        throw new Error('Please select at least one member to split with');
+      }
+
+      const amount = parseFloat(formData.amount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Please enter a valid amount');
+      }
+
+      const splits = validateSplits();
+
+      // 1. Create the expense
+      const { data: expense, error: expenseError } = await supabase
         .from('expenses')
         .insert({
           title: formData.title,
-          amount: parseFloat(formData.amount),
+          amount: amount,
           category: formData.category,
           group_id: formData.groupId,
           paid_by_id: userId,
           date: new Date().toISOString()
-        });
+        })
+        .select()
+        .single();
 
-      if (insertError) throw insertError;
+      if (expenseError) throw new Error(`Failed to create expense: ${expenseError.message}`);
+      if (!expense) throw new Error('Expense created but no data returned');
 
+      // 2. Create expense splits
+      const splitRecords = Object.entries(splits).map(([memberId, splitAmount]) => ({
+        expense_id: expense.id,
+        user_id: memberId,
+        amount: splitAmount
+      }));
+
+      const { error: splitsError } = await supabase
+        .from('expense_splits')
+        .insert(splitRecords);
+
+      if (splitsError) {
+        await supabase.from('expenses').delete().eq('id', expense.id);
+        throw new Error(`Failed to create expense splits: ${splitsError.message}`);
+      }
+
+      alert('Expense added successfully! 🎉');
       onClose();
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -850,10 +1095,13 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
   };
 
   const categories = ['🍕', '🚗', '🏠', '🎬', '🛒', '✈️', '💊', '📱'];
+  const splits = calculateSplits();
+  const totalAmount = parseFloat(formData.amount) || 0;
+  const splitSum = Object.values(splits).reduce((sum, val) => sum + val, 0);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl rounded-3xl border border-white/20 max-w-lg w-full p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl rounded-3xl border border-white/20 max-w-2xl w-full p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-white">Add Expense</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition text-2xl">
@@ -863,13 +1111,13 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
 
         {error && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
-            {error}
+            ⚠️ {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Expense Name</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Expense Name *</label>
             <input 
               type="text"
               placeholder="Dinner at restaurant"
@@ -880,9 +1128,10 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Amount</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Amount *</label>
             <input 
               type="number"
+              step="0.01"
               placeholder="₹1000"
               value={formData.amount}
               onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
@@ -899,7 +1148,7 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
                   type="button"
                   onClick={() => setFormData({ ...formData, category: emoji })}
                   className={`p-4 text-2xl bg-white/5 hover:bg-white/10 border rounded-xl transition-all ${
-                    formData.category === emoji ? 'border-purple-500/50 bg-white/10' : 'border-white/10'
+                    formData.category === emoji ? 'border-purple-500/50 bg-white/10 scale-110' : 'border-white/10'
                   }`}
                 >
                   {emoji}
@@ -909,7 +1158,7 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Group</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Group *</label>
             <select
               value={formData.groupId}
               onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
@@ -924,23 +1173,145 @@ function AddExpenseModal({ onClose, groups, userId }: any) {
             </select>
           </div>
 
+          {formData.groupId && groupMembers.length > 0 && (
+            <>
+              <div className="border-t border-white/10 pt-5">
+                <div className="flex items-center justify-between mb-4">
+                  <label className="text-sm font-medium text-gray-300">Split Between *</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSplitType('equal')}
+                      className={`px-4 py-2 text-sm rounded-lg transition-all ${
+                        splitType === 'equal'
+                          ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                          : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      Equal Split
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitType('custom')}
+                      className={`px-4 py-2 text-sm rounded-lg transition-all ${
+                        splitType === 'custom'
+                          ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                          : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      Custom Split
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {groupMembers.map(member => {
+                    const isSelected = selectedMembers.includes(member.id);
+                    const splitAmount = splits[member.id] || 0;
+
+                    return (
+                      <div
+                        key={member.id}
+                        className={`flex items-center gap-3 p-4 rounded-xl border transition-all ${
+                          isSelected
+                            ? 'bg-purple-500/10 border-purple-500/30'
+                            : 'bg-white/5 border-white/10'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleMember(member.id)}
+                          className="w-5 h-5 rounded accent-purple-500"
+                        />
+                        
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">
+                          {member.name[0]?.toUpperCase()}
+                        </div>
+                        
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white">{member.name}</p>
+                          <p className="text-xs text-gray-400">{member.email}</p>
+                        </div>
+
+                        {isSelected && (
+                          <div className="flex items-center gap-2">
+                            {splitType === 'custom' ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={customSplits[member.id]}
+                                onChange={(e) => setCustomSplits({
+                                  ...customSplits,
+                                  [member.id]: e.target.value
+                                })}
+                                className="w-24 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-purple-500/50"
+                              />
+                            ) : (
+                              <span className="text-sm font-bold text-purple-400">
+                                ₹{splitAmount.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {selectedMembers.length > 0 && totalAmount > 0 && (
+                  <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                    <div className="flex items-center justify-between text-sm mb-2">
+                      <span className="text-gray-400">Total Amount:</span>
+                      <span className="text-white font-bold">₹{totalAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mb-2">
+                      <span className="text-gray-400">Split Amount:</span>
+                      <span className={`font-bold ${
+                        Math.abs(splitSum - totalAmount) < 0.01 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        ₹{splitSum.toFixed(2)}
+                      </span>
+                    </div>
+                    {splitType === 'equal' && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Per Person:</span>
+                        <span className="text-purple-400 font-bold">
+                          ₹{(totalAmount / selectedMembers.length).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {splitType === 'custom' && Math.abs(splitSum - totalAmount) > 0.01 && (
+                      <div className="mt-2 text-xs text-red-400">
+                        ⚠️ Split amounts must equal the total amount
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           <div className="flex gap-3 pt-4">
             <button 
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl font-medium transition-all"
+              disabled={loading}
+              className="flex-1 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl font-medium transition-all disabled:opacity-50"
             >
               Cancel
             </button>
             <button 
-              type="submit"
-              disabled={loading}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50"
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading || selectedMembers.length === 0}
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Adding...' : 'Add Expense'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -963,8 +1334,6 @@ function CreateGroupModal({ onClose, userId }: any) {
     setError('');
 
     try {
-      console.log('=== Starting Group Creation ===');
-      
       if (!formData.name.trim()) {
         throw new Error('Group name is required');
       }
@@ -981,19 +1350,13 @@ function CreateGroupModal({ onClose, userId }: any) {
         created_by: userId
       };
 
-      console.log('1. Group data to insert:', groupData);
-
-      // Create group
       const { data: group, error: groupError } = await supabase
         .from('groups')
         .insert(groupData)
         .select()
         .single();
 
-      console.log('2. Group creation response:', { group, error: groupError });
-
       if (groupError) {
-        console.error('Group creation error:', groupError);
         throw new Error(groupError.message || 'Failed to create group');
       }
 
@@ -1001,38 +1364,25 @@ function CreateGroupModal({ onClose, userId }: any) {
         throw new Error('Group created but no data returned');
       }
 
-      console.log('3. Group created successfully:', group);
-
-      // Add creator as admin member
       const memberData = {
         group_id: group.id,
         user_id: userId,
         role: 'admin'
       };
 
-      console.log('4. Adding member with data:', memberData);
-
       const { error: memberError } = await supabase
         .from('group_members')
         .insert(memberData);
 
-      console.log('5. Member addition response:', { error: memberError });
-
       if (memberError) {
-        console.error('Member addition error:', memberError);
-        // Try to delete the group if member addition fails
         await supabase.from('groups').delete().eq('id', group.id);
         throw new Error(`Failed to add you as group admin: ${memberError.message}`);
       }
 
-      console.log('6. Group creation completed successfully!');
-      
-      // Success - close modal and refresh
       alert('Group created successfully!');
       onClose();
     } catch (err: any) {
-      console.error('=== Group Creation Failed ===');
-      console.error('Error:', err);
+      console.error('Group creation failed:', err);
       setError(err.message || 'Failed to create group');
     } finally {
       setLoading(false);
@@ -1101,16 +1451,20 @@ function CreateGroupModal({ onClose, userId }: any) {
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Theme Color</label>
-            <select
-              value={formData.color}
-              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-purple-500/50 transition"
-            >
-              <option value="from-purple-500 to-pink-500">Purple Pink</option>
-              <option value="from-blue-500 to-cyan-500">Blue Cyan</option>
-              <option value="from-green-500 to-emerald-500">Green Emerald</option>
-              <option value="from-orange-500 to-red-500">Orange Red</option>
-            </select>
+            <div className="relative">
+              <select
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="w-full px-4 py-3 bg-transparent border border-white/10 rounded-xl text-white focus:outline-none focus:border-purple-500/50 transition appearance-none"
+                style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
+              >
+                <option value="from-purple-500 to-pink-500" style={{ color: '#fff', backgroundColor: '#0b1220' }}>Purple Pink</option>
+                <option value="from-blue-500 to-cyan-500" style={{ color: '#fff', backgroundColor: '#0b1220' }}>Blue Cyan</option>
+                <option value="from-green-500 to-emerald-500" style={{ color: '#fff', backgroundColor: '#0b1220' }}>Green Emerald</option>
+                <option value="from-orange-500 to-red-500" style={{ color: '#fff', backgroundColor: '#0b1220' }}>Orange Red</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-white text-sm">▾</div>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">
