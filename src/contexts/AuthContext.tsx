@@ -24,24 +24,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClientComponentClient();
 
   useEffect(() => {
-    // Get initial session
     const getUser = async () => {
       try {
-        // First check current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (sessionError) {
-          throw sessionError;
-        }
+        if (sessionError) throw sessionError;
 
         if (session?.user) {
           setUser(session.user);
           await fetchProfile(session.user.id);
-          console.log('Session found:', session.user);
-        } else {
-          console.log('No active session');
-          setUser(null);
-          setProfile(null);
+          // Force refresh after session is confirmed
+          router.refresh();
         }
       } catch (error) {
         console.error('Auth error:', error);
