@@ -52,34 +52,59 @@ export default function Dashboard() {
     return () => clearTimeout(timeout);
   }, []);
 
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      }
+    };
+    
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.push('/login');
+      } else if (session) {
+        setUser(session.user);
+        loadData();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   const loadData = async () => {
     try {
       console.log('=== Loading Dashboard Data ===');
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Get session first
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (userError || !user) {
-        console.error('Auth error:', userError);
+      if (sessionError) {
+        console.error('Session error:', sessionError);
         router.push('/login');
         return;
       }
 
-      console.log('User authenticated:', user.id);
-      setUser(user);
-
-      const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.warn('No active session - redirecting to login');
+        console.warn('No active session found');
         router.push('/login');
         return;
       }
+
+      // Set user from session
+      setUser(session.user);
+      console.log('User authenticated:', session.user.id);
 
       // Get profile
       let profileData = null;
       const { data: existingProfile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user.id)
+        .eq('id', session.user.id)
         .single();
 
       if (profileError) {
@@ -87,9 +112,9 @@ export default function Dashboard() {
         const { data: newProfile } = await supabase
           .from('profiles')
           .insert({
-            id: user.id,
-            email: user.email,
-            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
             created_at: new Date().toISOString()
           })
           .select()
@@ -115,7 +140,7 @@ export default function Dashboard() {
           group_members!inner(role, user_id),
           expenses(amount)
         `)
-        .eq('group_members.user_id', user.id)
+        .eq('group_members.user_id', session.user.id)
         .limit(10);
 
       const transformedGroups = await Promise.all(
@@ -158,7 +183,7 @@ export default function Dashboard() {
       const { data: userGroups } = await supabase
         .from('group_members')
         .select('group_id')
-        .eq('user_id', user.id);
+        .eq('user_id', session.user.id);
 
       const groupIds = (userGroups || []).map(g => g.group_id);
 
@@ -188,14 +213,14 @@ export default function Dashboard() {
           const splits = expense.expense_splits || [];
           
           // Find current user's split
-          const userSplit = splits.find((s: any) => s.user_id === user.id);
+          const userSplit = splits.find((s: any) => s.user_id === session.user.id);
           const userOwes = userSplit ? Number(userSplit.amount) : 0;
 
           // If current user paid
-          if (expense.paid_by_id === user.id) {
+          if (expense.paid_by_id === session.user.id) {
             // User gets back what others owe
             splits.forEach((split: any) => {
-              if (split.user_id !== user.id) {
+              if (split.user_id !== session.user.id) {
                 const otherUserId = split.user_id;
                 if (!balanceMap[otherUserId]) {
                   balanceMap[otherUserId] = { name: '', amount: 0 };
@@ -253,7 +278,7 @@ export default function Dashboard() {
       const { data: notificationsData } = await supabase
         .from('reminders')
         .select('id, title, message, reminder_date, created_at')
-        .eq('user_id', user.id)
+        .eq('user_id', session.user.id)
         .eq('is_read', false)
         .order('reminder_date', { ascending: true })
         .limit(5);
@@ -266,6 +291,7 @@ export default function Dashboard() {
       console.error('Error loading data:', error);
       setError(error.message || 'Failed to load dashboard data');
       setLoading(false);
+      router.push('/login');
     }
   };
 
