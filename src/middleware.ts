@@ -10,19 +10,20 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // Protected routes that require authentication
-  const protectedRoutes = ['/dashboard', '/profile', '/balances', '/analytics', '/settings', '/group'];
-  const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route));
-
-  // If trying to access protected route without session, redirect to login
-  if (isProtectedRoute && !session) {
-    const redirectUrl = new URL('/login', req.url);
-    redirectUrl.searchParams.set('redirectedFrom', req.nextUrl.pathname);
-    return NextResponse.redirect(redirectUrl);
+  // Protected routes
+  if (req.nextUrl.pathname.startsWith('/dashboard') ||
+      req.nextUrl.pathname.startsWith('/profile') ||
+      req.nextUrl.pathname.startsWith('/settings')) {
+    if (!session) {
+      return NextResponse.redirect(new URL('/login', req.url));
+    }
   }
 
-  // If logged in and trying to access login/signup, redirect to dashboard
-  if (session && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/signup')) {
+  // Auth routes (when already logged in)
+  if (session && (
+    req.nextUrl.pathname.startsWith('/login') ||
+    req.nextUrl.pathname.startsWith('/register')
+  )) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
@@ -31,6 +32,10 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/dashboard/:path*',
+    '/profile/:path*',
+    '/settings/:path*',
+    '/login',
+    '/register'
   ],
 };

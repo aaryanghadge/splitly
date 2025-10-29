@@ -64,11 +64,7 @@ export default function SplitlyLanding() {
       {/* Hero Section */}
       <section className="pt-40 pb-32 px-6 relative">
         <div className="max-w-7xl mx-auto text-center">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-orange-500/10 border border-purple-500/20 rounded-full mb-8 backdrop-blur-sm hover:border-purple-500/40 transition-all cursor-pointer group">
-            <Sparkles className="w-4 h-4 text-purple-400 group-hover:rotate-12 transition-transform" />
-            <span className="text-sm text-gray-300 font-medium">Trusted by 10,000+ friend groups</span>
-          </div>
+         
           
           {/* Main Headline */}
           <h1 className="text-7xl md:text-8xl font-black mb-8 leading-tight tracking-tight">
