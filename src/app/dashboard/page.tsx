@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { 
@@ -30,7 +31,7 @@ export default function Dashboard() {
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const { user, loading: authLoading, signOut: authSignOut, setUser } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [groups, setGroups] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
