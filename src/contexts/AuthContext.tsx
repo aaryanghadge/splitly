@@ -1,22 +1,27 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { User } from '@supabase/auth-helpers-nextjs';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import type { User } from '@supabase/supabase-js';
 
-interface AuthContextType {
+type AuthContextType = {
   user: User | null;
   loading: boolean;
   signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
-}
+  signUp: (email: string, password: string, options?: { name?: string }) => Promise<{ 
+    user: User | null; 
+    error: Error | null; 
+  }>;
+};
 
-const AuthContext = createContext<AuthContextType>({
+export const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signOut: async () => {},
   setUser: () => {},
+  signUp: async () => ({ user: null, error: null }),
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -62,8 +67,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signUp = async (email: string, password: string, options?: { name?: string }) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: options?.name
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      return { user: data.user, error: null };
+    } catch (error) {
+      console.error('Error signing up:', error);
+      return { user: null, error: error as Error };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, setUser }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      signOut, 
+      setUser,
+      signUp 
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -71,8 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};
