@@ -83,31 +83,21 @@ export default function Dashboard() {
     try {
       console.log('=== Loading Dashboard Data ===');
       
-      // Get session first
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        router.push('/login');
+      // CRITICAL FIX: Don't check session again, use the user from context
+      if (!user) {
+        console.warn('No user in context');
         return;
       }
 
-      if (!session) {
-        console.warn('No active session found');
-        router.push('/login');
-        return;
-      }
-
-      // Set user from session
-      setUser(session.user);
-      console.log('User authenticated:', session.user.id);
+      console.log('User from context:', user.id);
+      setLoading(true);
 
       // Get profile
       let profileData = null;
       const { data: existingProfile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', user.id)
         .single();
 
       if (profileError) {
@@ -115,9 +105,9 @@ export default function Dashboard() {
         const { data: newProfile } = await supabase
           .from('profiles')
           .insert({
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            id: user.id,
+            email: user.email,
+            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
             created_at: new Date().toISOString()
           })
           .select()
@@ -128,7 +118,6 @@ export default function Dashboard() {
       }
 
       setProfile(profileData);
-      setLoading(false);
 
       // Get groups with member counts
       const { data: groupsData } = await supabase
@@ -143,7 +132,7 @@ export default function Dashboard() {
           group_members!inner(role, user_id),
           expenses(amount)
         `)
-        .eq('group_members.user_id', session.user.id)
+        .eq('group_members.user_id', user.id)
         .limit(10);
 
       const transformedGroups = await Promise.all(
@@ -181,12 +170,11 @@ export default function Dashboard() {
 
       setExpenses(expensesData || []);
 
-      // ===== FIXED BALANCE CALCULATION =====
       // Get all groups user is part of
       const { data: userGroups } = await supabase
         .from('group_members')
         .select('group_id')
-        .eq('user_id', session.user.id);
+        .eq('user_id', user.id);
 
       const groupIds = (userGroups || []).map(g => g.group_id);
 
@@ -215,37 +203,29 @@ export default function Dashboard() {
           const totalAmount = Number(expense.amount);
           const splits = expense.expense_splits || [];
           
-          // Find current user's split
-          const userSplit = splits.find((s: any) => s.user_id === session.user.id);
+          const userSplit = splits.find((s: any) => s.user_id === user.id);
           const userOwes = userSplit ? Number(userSplit.amount) : 0;
 
-          // If current user paid
-          if (expense.paid_by_id === session.user.id) {
-            // User gets back what others owe
+          if (expense.paid_by_id === user.id) {
             splits.forEach((split: any) => {
-              if (split.user_id !== session.user.id) {
+              if (split.user_id !== user.id) {
                 const otherUserId = split.user_id;
                 if (!balanceMap[otherUserId]) {
                   balanceMap[otherUserId] = { name: '', amount: 0 };
                 }
-                // This person owes the user
                 balanceMap[otherUserId].amount += Number(split.amount);
               }
             });
           } else {
-            // Someone else paid, user owes them
             const payerId = expense.paid_by_id;
             if (userOwes > 0) {
               if (!balanceMap[payerId]) {
                 balanceMap[payerId] = { name: '', amount: 0 };
               }
-              // User owes this person
               balanceMap[payerId].amount -= userOwes;
             }
           }
         });
-
-        console.log('Balance map before names:', balanceMap);
 
         // Get names for all users in balance map
         const userIds = Object.keys(balanceMap);
@@ -262,9 +242,8 @@ export default function Dashboard() {
           });
         }
 
-        // Convert to array and separate into owes-you and you-owe
         const balancesArray = Object.entries(balanceMap)
-          .filter(([_, data]) => Math.abs(data.amount) > 0.01) // Filter out near-zero balances
+          .filter(([_, data]) => Math.abs(data.amount) > 0.01)
           .map(([userId, data]) => ({
             user_id: userId,
             name: data.name,
@@ -281,7 +260,7 @@ export default function Dashboard() {
       const { data: notificationsData } = await supabase
         .from('reminders')
         .select('id, title, message, reminder_date, created_at')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .eq('is_read', false)
         .order('reminder_date', { ascending: true })
         .limit(5);
@@ -293,8 +272,8 @@ export default function Dashboard() {
     } catch (error: any) {
       console.error('Error loading data:', error);
       setError(error.message || 'Failed to load dashboard data');
+    } finally {
       setLoading(false);
-      router.push('/login');
     }
   };
 
