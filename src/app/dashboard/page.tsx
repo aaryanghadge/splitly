@@ -19,11 +19,13 @@ import {
   ArrowDownRight,
   Filter,
   Shield,
-  Trash2
+  Trash2,
+  Menu  // Add this
 } from 'lucide-react';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);  // Add this line
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -412,14 +414,30 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-pink-900/20"></div>
-        <div className="absolute top-20 left-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl"></div>
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 bg-black/50 backdrop-blur-xl border-b border-white/10 z-50 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 rounded-xl flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              Splitly
+            </span>
+          </div>
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10"
+          >
+            <Menu className="w-6 h-6 text-white" />
+          </button>
+        </div>
       </div>
 
-      {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-64 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl border-r border-white/10 z-50">
+      {/* Sidebar - Hidden on mobile by default */}
+      <aside className={`fixed inset-y-0 left-0 w-64 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl border-r border-white/10 z-50 transform transition-transform duration-200 lg:translate-x-0 ${
+        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
         <div className="flex flex-col h-full p-6">
           <div 
             onClick={() => router.push('/dashboard')}
@@ -485,8 +503,16 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="ml-64 min-h-screen">
+      {/* Mobile menu backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Main Content - Adjust padding for mobile */}
+      <main className={`${isMobileMenuOpen ? 'ml-0' : 'ml-0'} lg:ml-64 min-h-screen pt-16 lg:pt-0`}>
         <header className="sticky top-0 bg-black/50 backdrop-blur-xl border-b border-white/10 z-40">
           <div className="px-8 py-4 flex items-center justify-between">
             <div>
@@ -550,7 +576,7 @@ export default function Dashboard() {
 
         <div className="p-8">
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 px-4 lg:px-8">
             <StatCard 
               icon={<ArrowDownRight className="w-5 h-5" />}
               label="You Owe"
@@ -577,9 +603,9 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-            {/* Groups */}
-            <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 px-4 lg:px-8">
+            <div className="lg:col-span-2 space-y-6">
+              {/* Groups */}
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white">Your Groups</h2>
                 <button 
@@ -603,7 +629,7 @@ export default function Dashboard() {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {groups.map(group => (
                     <GroupCard 
                       key={group.id} 
