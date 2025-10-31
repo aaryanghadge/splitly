@@ -425,17 +425,25 @@ export default function Dashboard() {
               Splitly
             </span>
           </div>
-          <button 
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10"
-          >
-            <Menu className="w-6 h-6 text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowAddExpense(true)}
+              className="p-2 rounded-xl bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10"
+            >
+              <Menu className="w-5 h-5 text-white" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Sidebar - Hidden on mobile by default */}
-      <aside className={`fixed inset-y-0 left-0 w-64 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl border-r border-white/10 z-50 transform transition-transform duration-200 lg:translate-x-0 ${
+      <aside className={`fixed inset-y-0 left-0 w-[280px] bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl border-r border-white/10 z-50 transform transition-transform duration-200 lg:translate-x-0 ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex flex-col h-full p-6">
@@ -503,24 +511,25 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* Mobile menu backdrop */}
+      {/* Mobile menu backdrop - make it darker */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-40 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Main Content - Adjust padding for mobile */}
       <main className={`${isMobileMenuOpen ? 'ml-0' : 'ml-0'} lg:ml-64 min-h-screen pt-16 lg:pt-0`}>
-        <header className="sticky top-0 bg-black/50 backdrop-blur-xl border-b border-white/10 z-40">
-          <div className="px-8 py-4 flex items-center justify-between">
+        <header className="sticky top-16 lg:top-0 bg-black/50 backdrop-blur-xl border-b border-white/10 z-40">
+          <div className="px-4 py-4 lg:px-8 lg:py-4">
             <div>
-              <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+              <h1 className="text-xl lg:text-2xl font-bold text-white">Dashboard</h1>
               <p className="text-sm text-gray-400">Welcome back, {profile?.name || 'User'} 👋</p>
             </div>
 
-            <div className="flex items-center gap-4">
+            {/* Hide search on mobile */}
+            <div className="hidden lg:flex items-center gap-4 mt-4 lg:mt-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input 
@@ -574,9 +583,9 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="p-8">
+        <div className="p-4 lg:p-8">
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 px-4 lg:px-8">
+          <div className="grid grid-cols-1 gap-4 mb-6 px-4">
             <StatCard 
               icon={<ArrowDownRight className="w-5 h-5" />}
               label="You Owe"
@@ -693,38 +702,40 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="border-b border-white/10">
-                      <tr>
-                        <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Expense</th>
-                        <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Group</th>
-                        <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Paid By</th>
-                        <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Date</th>
-                        <th className="text-right px-6 py-4 text-xs font-medium text-gray-400 uppercase">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {expenses.map((expense) => (
-                        <tr key={expense.id} className="border-b border-white/5 hover:bg-white/5 transition-all cursor-pointer">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">{expense.category || '💰'}</span>
-                              <span className="text-sm font-medium text-white">{expense.title}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-400">{expense.groups?.name || 'N/A'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-400">{expense.paid_by?.name || 'You'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-400">
-                            {new Date(expense.date).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 text-right text-sm font-medium text-white">
-                            ₹{Number(expense.amount).toLocaleString()}
-                          </td>
+                <div className="overflow-x-auto -mx-4 lg:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <table className="min-w-full divide-y divide-white/10">
+                      <thead className="bg-white/5">
+                        <tr>
+                          <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Expense</th>
+                          <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Group</th>
+                          <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Paid By</th>
+                          <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Date</th>
+                          <th className="text-right px-6 py-4 text-xs font-medium text-gray-400 uppercase">Amount</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-white/10">
+                        {expenses.map((expense) => (
+                          <tr key={expense.id} className="border-b border-white/5 hover:bg-white/5 transition-all cursor-pointer">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{expense.category || '💰'}</span>
+                                <span className="text-sm font-medium text-white">{expense.title}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-400">{expense.groups?.name || 'N/A'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-400">{expense.paid_by?.name || 'You'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-400">
+                              {new Date(expense.date).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 text-right text-sm font-medium text-white">
+                              ₹{Number(expense.amount).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
