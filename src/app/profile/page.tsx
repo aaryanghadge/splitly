@@ -45,7 +45,7 @@ export default function ProfilePage() {
         const newProfile = {
           id: user.id,
           email: user.email,
-          name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
           created_at: new Date().toISOString()
         };
 
@@ -64,7 +64,7 @@ export default function ProfilePage() {
       } else {
         setProfile(profileData);
         setFormData({
-          name: profileData?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          name: profileData?.name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
           bio: profileData?.bio || '',
           phone: profileData?.phone || ''
         });

@@ -107,7 +107,7 @@ export default function Dashboard() {
           .insert({
             id: user.id,
             email: user.email,
-            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+            name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
             created_at: new Date().toISOString()
           })
           .select()
@@ -115,6 +115,18 @@ export default function Dashboard() {
         profileData = newProfile;
       } else {
         profileData = existingProfile;
+        if (!profileData?.name || profileData.name === 'User') {
+          const updatedName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User';
+          if (updatedName !== profileData.name) {
+            const { data: updated } = await supabase
+              .from('profiles')
+              .update({ name: updatedName, updated_at: new Date().toISOString() })
+              .eq('id', user.id)
+              .select()
+              .single();
+            profileData = updated || { ...profileData, name: updatedName };
+          }
+        }
       }
 
       setProfile(profileData);
@@ -476,10 +488,10 @@ export default function Dashboard() {
           <div className="pt-6 border-t border-white/10">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all cursor-pointer group">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">
-                {profile?.name?.[0]?.toUpperCase() || 'U'}
+                {(profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.[0] || 'U')[0]?.toUpperCase()}
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-white">{profile?.name || 'User'}</p>
+                <p className="text-sm font-medium text-white">{profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email?.split('@')[0]) || 'User'}</p>
                 <p className="text-xs text-gray-400">{user?.email}</p>
               </div>
               <button onClick={handleSignOut}>
@@ -504,7 +516,7 @@ export default function Dashboard() {
           <div className="px-4 py-4 lg:px-8 lg:py-4">
             <div>
               <h1 className="text-xl lg:text-2xl font-bold text-white">Dashboard</h1>
-              <p className="text-sm text-gray-400">Welcome back, {profile?.name || 'User'} 👋</p>
+              <p className="text-sm text-gray-400">Welcome back, {profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email?.split('@')[0]) || 'User'} 👋</p>
             </div>
 
             {/* Hide search on mobile */}
@@ -917,7 +929,7 @@ function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
             {profile?.name?.[0]?.toUpperCase() || 'U'}
           </div>
           <div>
-            <p className="text-sm font-bold text-white">{profile?.name || 'User'}</p>
+            <p className="text-sm font-bold text-white">{profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email?.split('@')[0]) || 'User'}</p>
             <p className="text-xs text-gray-400">{user?.email}</p>
           </div>
         </div>
