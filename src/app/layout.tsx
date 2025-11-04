@@ -8,6 +8,10 @@ import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
+// This app reads auth cookies in the layout to hydrate session → force dynamic
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: 'Splitly - Split Expenses with Friends',
   description: 'Split expenses with friends easily',

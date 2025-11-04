@@ -22,9 +22,6 @@
     }
   }
 
-  body {
-    background: var(--background);
-    color: var(--foreground);
-    font-family: Arial, Helvetica, sans-serif;
-  }
+  /* Let Next.js font class on <body> (Inter) control the font. 
+     Avoid overriding background/colors so Tailwind classes define UI. */
 }
