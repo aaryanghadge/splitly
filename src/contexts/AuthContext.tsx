@@ -10,6 +10,11 @@ type AuthContextType = {
   loading: boolean;
   signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
+  signUp: (
+    email: string,
+    password: string,
+    metadata?: Record<string, any>
+  ) => Promise<{ user: User | null; error: Error | null }>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -18,6 +23,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
   setUser: () => {},
+  signUp: async () => ({ user: null, error: null }),
 });
 
 export const AuthProvider = ({ 
@@ -57,12 +63,54 @@ export const AuthProvider = ({
     }
   };
 
+  const signUp = async (
+    email: string,
+    password: string,
+    metadata?: Record<string, any>
+  ): Promise<{ user: User | null; error: Error | null }> => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: metadata || {},
+        },
+      });
+
+      if (error) return { user: null, error: error as unknown as Error };
+
+      const newUser = data.user as User | null;
+      if (newUser) {
+        setUser(newUser);
+        // Ensure profile exists
+        await supabase
+          .from('profiles')
+          .upsert({
+            id: newUser.id,
+            email: newUser.email,
+            name:
+              (metadata && (metadata.full_name || metadata.name)) ||
+              newUser.user_metadata?.full_name ||
+              newUser.user_metadata?.name ||
+              newUser.email?.split('@')[0] ||
+              'User',
+            created_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+      }
+
+      return { user: newUser, error: null };
+    } catch (e: any) {
+      return { user: null, error: e };
+    }
+  };
+
   const value: AuthContextType = {
     user,
     session,
     loading,
     signOut,
     setUser,
+    signUp,
   };
 
   return (
