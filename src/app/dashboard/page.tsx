@@ -291,8 +291,7 @@ export default function Dashboard() {
 
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await fetch('/auth/signout', { method: 'POST' });
       
       setUser(null);
       setProfile(null);
