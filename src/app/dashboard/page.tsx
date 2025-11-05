@@ -39,6 +39,8 @@ export default function Dashboard() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [balances, setBalances] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [showFilter, setShowFilter] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -416,6 +418,43 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
+              >
+                <Bell className="w-5 h-5 text-gray-400" />
+                {notifications.length > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full"></span>
+                )}
+              </button>
+              {showNotifications && (
+                <NotificationsDropdown 
+                  notifications={notifications}
+                  onClose={() => setShowNotifications(false)}
+                  onAddReminder={() => {
+                    setShowNotifications(false);
+                    setShowAddReminder(true);
+                  }}
+                />
+              )}
+            </div>
+            <div className="relative">
+              <button 
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
+              >
+                <Settings className="w-5 h-5 text-gray-400" />
+              </button>
+              {showSettings && (
+                <SettingsDropdown 
+                  user={user}
+                  profile={profile}
+                  onClose={() => setShowSettings(false)}
+                  onSignOut={handleSignOut}
+                />
+              )}
+            </div>
             <button 
               onClick={() => setShowAddExpense(true)}
               className="p-2 rounded-xl bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white"
@@ -513,7 +552,7 @@ export default function Dashboard() {
       <main className={`${isMobileMenuOpen ? 'ml-0' : 'ml-0'} lg:ml-64 min-h-screen pt-16 lg:pt-0`}>
         <header className="sticky top-16 lg:top-0 bg-black/50 backdrop-blur-xl border-b border-white/10 z-40">
           <div className="px-4 py-4 lg:px-8 lg:py-4">
-            <div>
+            <div className="lg:flex lg:items-center lg:justify-between">
               <h1 className="text-xl lg:text-2xl font-bold text-white">Dashboard</h1>
               <p className="text-sm text-gray-400">Welcome back, {profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email?.split('@')[0]) || 'User'} 👋</p>
             </div>
@@ -678,12 +717,26 @@ export default function Dashboard() {
 
           {/* Recent Expenses */}
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 relative">
               <h2 className="text-xl font-bold text-white">Recent Expenses</h2>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm transition-all">
-                <Filter className="w-4 h-4" />
-                Filter
-              </button>
+              <div>
+                <button 
+                  onClick={() => setShowFilter(!showFilter)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm transition-all">
+                  <Filter className="w-4 h-4" />
+                  Filter
+                </button>
+                {showFilter && (
+                  <div className="absolute right-0 top-12 w-64 bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-2xl p-3 backdrop-blur-xl z-30">
+                    <input
+                      value={filterQuery}
+                      onChange={(e) => setFilterQuery(e.target.value)}
+                      placeholder="Filter by title or group"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {expenses.length === 0 ? (
@@ -705,7 +758,11 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/10">
-                        {expenses.map((expense) => (
+                        {(filterQuery ? expenses.filter((e) =>
+                              (e.title || '').toLowerCase().includes(filterQuery.toLowerCase()) ||
+                              (e.groups?.name || '').toLowerCase().includes(filterQuery.toLowerCase())
+                            ) : expenses
+                          ).map((expense) => (
                           <tr key={expense.id} className="border-b border-white/5 hover:bg-white/5 transition-all cursor-pointer">
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
@@ -867,7 +924,7 @@ function BalanceItem({ balance }: any) {
 
 function NotificationsDropdown({ notifications, onClose, onAddReminder }: any) {
   return (
-    <div className="absolute right-0 top-12 w-80 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 shadow-2xl z-50">
+    <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 shadow-2xl z-50">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Notifications</h3>
         <button 
@@ -911,7 +968,7 @@ function SettingsDropdown({ user, profile, onClose, onSignOut }: any) {
   const router = useRouter();
 
   return (
-    <div className="absolute right-0 top-12 w-72 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 shadow-2xl z-50">
+    <div className="absolute right-0 top-12 w-72 max-w-[calc(100vw-2rem)] bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 shadow-2xl z-50">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Settings</h3>
         <button 

@@ -240,49 +240,49 @@ export default function GroupDetails() {
       </div>
 
       <header className="sticky top-0 bg-black/50 backdrop-blur-xl border-b border-white/10 z-40">
-        <div className="max-w-7xl mx-auto px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
               <button 
                 onClick={() => router.push('/dashboard')}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 bg-gradient-to-br ${group.color || 'from-purple-500 to-pink-500'} rounded-2xl flex items-center justify-center text-2xl shadow-lg`}>
+              <div className="flex items-center gap-3 sm:gap-3 min-w-0">
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${group.color || 'from-purple-500 to-pink-500'} rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-lg shrink-0`}>
                   {group.emoji || '💰'}
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-white">{group.name}</h1>
-                  <p className="text-sm text-gray-400">{group.description || 'No description'}</p>
+                <div className="min-w-0">
+                  <h1 className="text-lg sm:text-2xl font-bold text-white truncate">{group.name}</h1>
+                  <p className="text-xs sm:text-sm text-gray-400 truncate">{group.description || 'No description'}</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button 
                 onClick={() => setShowAddMember(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all text-sm"
               >
                 <UserPlus className="w-4 h-4" />
-                <span className="text-sm">Add Member</span>
+                <span className="hidden xs:inline sm:inline">Add Member</span>
               </button>
               <button 
                 onClick={() => setShowAddExpense(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105"
+                className="flex items-center gap-2 px-3 py-1.5 sm:px-5 sm:py-2.5 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105 text-sm"
               >
                 <Plus className="w-4 h-4" />
-                Add Expense
+                <span className="hidden xs:inline sm:inline">Add Expense</span>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <StatCard 
             icon={<DollarSign className="w-5 h-5" />}
             label="Total Spent"
@@ -313,7 +313,7 @@ export default function GroupDetails() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
           {/* Expenses */}
           <div className="lg:col-span-2 space-y-6">
             <div>
